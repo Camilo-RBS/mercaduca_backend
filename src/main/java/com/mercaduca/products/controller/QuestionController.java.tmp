@@ -1,0 +1,36 @@
+package com.mercaduca.products.controller;
+import com.mercaduca.common.dto.ApiResponse;
+import com.mercaduca.common.dto.PageResponse;
+import com.mercaduca.products.dto.QuestionDTOs;
+import com.mercaduca.products.service.QuestionService;
+import com.mercaduca.users.entity.User;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/questions") @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth") @Tag(name = "Preguntas y Respuestas", description = "Q&A de productos")
+public class QuestionController {
+    private final QuestionService questionService;
+    @GetMapping("/products/{productId}") @Operation(summary = "Ver preguntas de un producto")
+    public ResponseEntity<ApiResponse<PageResponse<QuestionDTOs.QuestionResponse>>> getQuestions(
+            @PathVariable Long productId, @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="10") int size) {
+        return ResponseEntity.ok(ApiResponse.success(questionService.getProductQuestions(productId, PageRequest.of(page, size)))); }
+    @PostMapping("/products/{productId}") @PreAuthorize("hasRole('BUYER')")
+    @Operation(summary = "Hacer una pregunta sobre un producto")
+    public ResponseEntity<ApiResponse<QuestionDTOs.QuestionResponse>> ask(@PathVariable Long productId,
+            @Valid @RequestBody QuestionDTOs.AskQuestionRequest req, @AuthenticationPrincipal User user) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Pregunta enviada", questionService.askQuestion(productId, req, user.getId()))); }
+    @PostMapping("/{questionId}/answer") @PreAuthorize("hasRole('SELLER')")
+    @Operation(summary = "Responder una pregunta (Vendedor)")
+    public ResponseEntity<ApiResponse<QuestionDTOs.QuestionResponse>> answer(@PathVariable Long questionId,
+        return ResponseEntity.ok(ApiResponse.success("Respuesta enviada", questionService.answerQuestion(questionId, req, user.getId()))); }
+}

@@ -1,0 +1,55 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mercaduca-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mercaduca
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U postgres"]
+      interval: 10s timeout: 5s retries: 10
+    networks: [mercaduca-net]
+
+  app:
+    build: { context: ., dockerfile: Dockerfile }
+    container_name: mercaduca-app
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/mercaduca
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-admin}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+    ports: ["8080:8080"]
+    volumes: [uploads_data:/app/uploads]
+    networks: [mercaduca-net]
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: mercaduca-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mercaduca.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports: ["5050:80"]
+    profiles: [dev]
+    networks: [mercaduca-net]
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  mercaduca-net:
+    driver: bridge

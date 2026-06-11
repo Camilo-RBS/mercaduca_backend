@@ -1,0 +1,164 @@
+package com.mercaduca.disputes.service;
+
+import com.mercaduca.common.dto.PageResponse;
+import com.mercaduca.disputes.dto.DisputeDTOs;
+import com.mercaduca.disputes.entity.Dispute;
+import com.mercaduca.disputes.repository.DisputeRepository;
+import com.mercaduca.exceptions.custom.BusinessException;
+import com.mercaduca.exceptions.custom.ForbiddenException;
+import com.mercaduca.exceptions.custom.ResourceNotFoundException;
+import com.mercaduca.notifications.service.NotificationService;
+import com.mercaduca.orders.entity.Order;
+import com.mercaduca.orders.entity.OrderItem;
+import com.mercaduca.orders.repository.OrderRepository;
+import com.mercaduca.users.entity.User;
+import com.mercaduca.users.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class DisputeServiceImpl implements DisputeService {
+
+    private final DisputeRepository disputeRepository;
+    private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    @Override
+    @Transactional
+    public DisputeDTOs.DisputeResponse openDispute(
+            Long orderId, DisputeDTOs.OpenDisputeRequest req, Long buyerId) {
+        if (disputeRepository.existsByOrderIdAndBuyerId(orderId, buyerId)) {
+            throw new BusinessException("Ya existe una disputa para esta orden");
+        }
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Orden", "id", orderId));
+        if (!order.getBuyer().getId().equals(buyerId)) {
+            throw new BusinessException("No eres el comprador de esta orden");
+        }
+        User buyer = userRepository.findById(buyerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario", "id", buyerId));
+        Dispute d = Dispute.builder()
+                .order(order).buyer(buyer)
+                .reason(req.getReason()).description(req.getDescription())
+                .status(Dispute.DisputeStatus.OPEN).build();
+        Dispute saved = disputeRepository.save(d);
+
+        // Notificar al(los) vendedor(es) involucrado(s)
+        order.getItems().stream()
+                .map(OrderItem::getSellerId)
+                .distinct()
+                .forEach(sellerId -> userRepository.findById(sellerId)
+                        .ifPresent(seller -> notificationService
+                                .notifySellerNewDispute(seller, saved.getId(), order.getOrderNumber())));
+
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<DisputeDTOs.DisputeResponse> getMyDisputes(Long buyerId, Pageable pageable) {
+        return PageResponse.from(
+                disputeRepository.findByBuyerId(buyerId, pageable).map(this::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<DisputeDTOs.DisputeResponse> getSellerDisputes(Long sellerId, Pageable pageable) {
+        return PageResponse.from(
+                disputeRepository.findBySellerIdInOrderItems(sellerId, pageable).map(this::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<DisputeDTOs.DisputeResponse> getAllDisputes(Pageable pageable) {
+        return PageResponse.from(disputeRepository.findAll(pageable).map(this::toResponse));
+    }
+
+    @Override
+    @Transactional
+    public DisputeDTOs.DisputeResponse resolveDispute(
+            Long id, DisputeDTOs.ResolveDisputeRequest req, Long adminId) {
+        Dispute d = findDispute(id);
+        User admin = userRepository.findById(adminId)
+                .orElseThrow(() -> new ResourceNotFoundException("Admin", "id", adminId));
+        d.setAssignedAdmin(admin);
+        d.setStatus(req.getStatus());
+        d.setAdminNotes(req.getAdminNotes());
+        d.setResolution(req.getResolution());
+        Dispute resolved = disputeRepository.save(d);
+
+        // Notificar al comprador y al vendedor si hay resolución
+        if (req.getResolution() != null && !req.getResolution().isBlank()) {
+            notificationService.notifyDisputeResolved(d.getBuyer(), resolved.getId(), req.getResolution());
+            d.getOrder().getItems().stream()
+                    .map(OrderItem::getSellerId)
+                    .distinct()
+                    .forEach(sid -> userRepository.findById(sid).ifPresent(s ->
+                            notificationService.notifyDisputeResolved(s, resolved.getId(), req.getResolution())));
+        }
+        return toResponse(resolved);
+    }
+
+    @Override
+    @Transactional
+    public DisputeDTOs.DisputeResponse sellerRespond(
+            Long id, DisputeDTOs.SellerResponseRequest req, Long sellerId) {
+        Dispute d = findDispute(id);
+
+        // Verificar que el vendedor tenga productos en esta orden
+        boolean isSeller = d.getOrder().getItems().stream()
+                .anyMatch(i -> i.getSellerId().equals(sellerId));
+        if (!isSeller) {
+            throw new ForbiddenException("Esta disputa no corresponde a tus productos");
+        }
+
+        d.setSellerResponse(req.getSellerResponse());
+        d.setSellerProposedSolution(req.getSellerProposedSolution());
+        if (d.getStatus() == Dispute.DisputeStatus.OPEN) {
+            d.setStatus(Dispute.DisputeStatus.UNDER_REVIEW);
+        }
+        Dispute updated = disputeRepository.save(d);
+        // Notificar al comprador que el vendedor respondió
+        notificationService.notifySellerDisputeResponded(d.getBuyer(), updated.getId());
+        return toResponse(updated);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DisputeDTOs.DisputeResponse getDisputeById(Long id) {
+        return toResponse(findDispute(id));
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private Dispute findDispute(Long id) {
+        return disputeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Disputa", "id", id));
+    }
+
+    private DisputeDTOs.DisputeResponse toResponse(Dispute d) {
+        DisputeDTOs.DisputeResponse r = new DisputeDTOs.DisputeResponse();
+        r.setId(d.getId());
+        r.setOrderId(d.getOrder().getId());
+        r.setOrderNumber(d.getOrder().getOrderNumber());
+        r.setBuyerId(d.getBuyer().getId());
+        r.setBuyerName(d.getBuyer().getFirstName() + " " + d.getBuyer().getLastName());
+        d.getOrder().getItems().stream().findFirst().ifPresent(item -> {
+            r.setSellerId(item.getSellerId());
+            r.setSellerName(item.getSellerName());
+        });
+        r.setReason(d.getReason());
+        r.setDescription(d.getDescription());
+        r.setStatus(d.getStatus());
+        r.setAdminNotes(d.getAdminNotes());
+        r.setResolution(d.getResolution());
+        r.setSellerResponse(d.getSellerResponse());
+        r.setSellerProposedSolution(d.getSellerProposedSolution());
+        r.setCreatedAt(d.getCreatedAt());
+        return r;
+    }
+}

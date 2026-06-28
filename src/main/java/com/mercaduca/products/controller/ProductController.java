@@ -67,9 +67,9 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SELLER')")
+    @PreAuthorize("hasAnyRole('SELLER','ADMIN')")
     @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "Deactivate a product (Seller only)")
+    @Operation(summary = "Deactivate a product (Seller owner or Admin)")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(
             @PathVariable Long id,
             @AuthenticationPrincipal User currentUser) {

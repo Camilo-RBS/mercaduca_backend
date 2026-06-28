@@ -35,4 +35,9 @@ public class ReportController {
             @PathVariable OrderStatus status,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(orderService.getOrdersByStatus(status, PageRequest.of(page, size)))); }
+    @GetMapping("/orders/search") @Operation(summary = "Buscar órdenes por número o nombre de comprador")
+    public ResponseEntity<ApiResponse<PageResponse<OrderDTOs.OrderResponse>>> searchOrders(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "15") int size) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.searchOrders(keyword, PageRequest.of(page, size)))); }
 }

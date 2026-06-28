@@ -13,7 +13,6 @@ import com.mercaduca.reviews.dto.ReviewDTOs;
 import com.mercaduca.reviews.entity.Review;
 import com.mercaduca.reviews.mapper.ReviewMapper;
 import com.mercaduca.reviews.repository.ReviewRepository;
-import com.mercaduca.users.entity.SellerProfile;
 import com.mercaduca.users.entity.User;
 import com.mercaduca.users.repository.SellerProfileRepository;
 import com.mercaduca.users.repository.UserRepository;
@@ -69,8 +68,9 @@ public class ReviewServiceImpl implements ReviewService {
                 .build();
 
         reviewRepository.save(review);
-        updateProductRating(product);
-        updateSellerRating(product.getSeller().getId());
+        Long sellerId = product.getSeller().getId();
+        updateProductRating(product.getId());
+        updateSellerRating(sellerId);
 
         return reviewMapper.toResponse(review);
     }
@@ -105,19 +105,16 @@ public class ReviewServiceImpl implements ReviewService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private void updateProductRating(Product product) {
-        Double avg = reviewRepository.findAverageRatingByProductId(product.getId());
-        long count = reviewRepository.countByProductId(product.getId());
-        product.setAverageRating(avg != null ? avg : 0.0);
-        product.setTotalReviews((int) count);
-        productRepository.save(product);
+    private void updateProductRating(Long productId) {
+        Double avg = reviewRepository.findAverageRatingByProductId(productId);
+        long count = reviewRepository.countByProductId(productId);
+        productRepository.updateRatingStats(productId, avg != null ? avg : 0.0, (int) count);
     }
 
     private void updateSellerRating(Long sellerId) {
-        sellerProfileRepository.findByUserId(sellerId).ifPresent(sp -> {
+        if (sellerProfileRepository.existsByUserId(sellerId)) {
             Double avg = reviewRepository.findAverageRatingBySellerId(sellerId);
-            sp.setAverageRating(avg != null ? avg : 0.0);
-            sellerProfileRepository.save(sp);
-        });
+            sellerProfileRepository.updateAverageRatingByUserId(sellerId, avg != null ? avg : 0.0);
+        }
     }
 }

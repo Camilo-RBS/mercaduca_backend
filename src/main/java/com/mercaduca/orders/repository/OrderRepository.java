@@ -26,4 +26,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findOrdersBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
     long countByStatus(OrderStatus status);
     Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    @Query("SELECT o FROM Order o WHERE LOWER(o.orderNumber) LIKE LOWER(CONCAT('%',:keyword,'%')) OR LOWER(CONCAT(o.buyer.firstName,' ',o.buyer.lastName)) LIKE LOWER(CONCAT('%',:keyword,'%')) ORDER BY o.createdAt DESC")
+    Page<Order> searchOrders(@Param("keyword") String keyword, Pageable pageable);
 }

@@ -1,0 +1,109 @@
+package com.mercaduca.config;
+
+import com.mercaduca.security.filters.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final AuthenticationProvider authenticationProvider;
+
+    @Value("${app.cors.allowed-origins}")
+    private String[] allowedOrigins;
+
+    private static final String[] PUBLIC_URLS = {
+        "/auth/**", "/categories/**", "/categories",
+        "/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/actuator/health"
+    };
+
+    /**
+     * Jerarquía de roles: SELLER hereda todos los permisos de BUYER.
+     *
+     * Con esta configuración, cualquier endpoint marcado con hasRole('BUYER')
+     * es automáticamente accesible para usuarios con rol SELLER.
+     * No es necesario usar hasAnyRole('BUYER','SELLER') en ningún endpoint.
+     *
+     * NOTA: Este bean es estático para garantizar que Spring lo inicialice
+     * antes que cualquier otro bean de esta clase — evita problemas de orden
+     * de inicialización en Spring Boot 3.x con @RequiredArgsConstructor.
+     */
+    @Bean
+    public static RoleHierarchy roleHierarchy() {
+        RoleHierarchyImpl hierarchy = new RoleHierarchyImpl();
+        hierarchy.setHierarchy("ROLE_SELLER > ROLE_BUYER");
+        return hierarchy;
+    }
+
+    /**
+     * Registra la jerarquía de roles para @PreAuthorize y @PostAuthorize.
+     * Sin este bean, la jerarquía solo aplica al SecurityFilterChain pero no
+     * a las anotaciones de método.
+     *
+     * Ambos beans son estáticos para evitar el problema de orden de
+     * inicialización cuando la clase usa @RequiredArgsConstructor.
+     */
+        handler.setRoleHierarchy(roleHierarchy());
+        return handler;
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(AbstractHttpConfigurer::disable)
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(PUBLIC_URLS).permitAll()
+                .requestMatchers(HttpMethod.GET, "/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/reviews/product/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/questions/products/**").permitAll()
+                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .requestMatchers("/seller/**").hasRole("SELLER")
+                .requestMatchers("/sellers/**").hasRole("BUYER")
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authenticationProvider(authenticationProvider)
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of(allowedOrigins));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+}

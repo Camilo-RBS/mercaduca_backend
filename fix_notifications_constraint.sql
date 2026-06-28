@@ -46,11 +46,14 @@ ALTER TABLE notifications
         -- Chat y preguntas
         'NEW_MESSAGE',
         'NEW_QUESTION',
-        'NEW_ANSWER'
+        'NEW_ANSWER',
+        -- Administración — cuenta de usuario
+        'ACCOUNT_DISABLED',
+        'ACCOUNT_ENABLED'
     ));
 
 -- Verificar que el constraint fue creado correctamente
-SELECT conname, consrc
+SELECT conname, pg_get_constraintdef(oid) AS constraint_def
 FROM pg_constraint
 WHERE conrelid = 'notifications'::regclass
   AND contype = 'c';

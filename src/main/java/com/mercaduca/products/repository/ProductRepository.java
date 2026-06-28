@@ -33,4 +33,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     @Query("SELECT p FROM Product p WHERE p.status = 'ACTIVE' ORDER BY p.viewCount DESC")
     List<Product> findTopViewed(Pageable pageable);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.averageRating = :avg, p.totalReviews = :count WHERE p.id = :id")
+    void updateRatingStats(@Param("id") Long id, @Param("avg") Double avg, @Param("count") int count);
 }

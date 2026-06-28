@@ -139,6 +139,7 @@ public class UserServiceImpl implements UserService {
                     r.setLastName(sp.getUser().getLastName());
                     r.setTaxId(sp.getTaxId());
                     r.setSubmittedAt(sp.getCreatedAt());
+                    r.setStatus(SellerStatus.PENDING);
                     return r;
                 });
         return PageResponse.from(page);
@@ -162,8 +163,14 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void toggleUserStatus(Long userId) {
         User user = findUser(userId);
-        user.setEnabled(!user.isEnabled());
+        boolean nowEnabled = !user.isEnabled();
+        user.setEnabled(nowEnabled);
         userRepository.save(user);
+        if (nowEnabled) {
+            notificationService.notifyAccountEnabled(user);
+        } else {
+            notificationService.notifyAccountDisabled(user);
+        }
     }
 
     @Override

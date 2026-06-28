@@ -72,6 +72,7 @@ public class UserDTOs {
         private String lastName;
         private String taxId;
         private LocalDateTime submittedAt;
+        private SellerStatus status;
     }
 
     @Data

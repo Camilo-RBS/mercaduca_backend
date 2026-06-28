@@ -126,11 +126,14 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void deleteProduct(Long productId, Long sellerId) {
+    public void deleteProduct(Long productId, Long requestingUserId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", "id", productId));
 
-        if (!product.getSeller().getId().equals(sellerId)) {
+        User requesting = userRepository.findById(requestingUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", requestingUserId));
+        boolean isAdmin = requesting.getRole() == Role.ADMIN;
+        if (!isAdmin && !product.getSeller().getId().equals(requestingUserId)) {
             throw new ForbiddenException("You can only delete your own products");
         }
 

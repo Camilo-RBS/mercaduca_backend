@@ -223,6 +223,15 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PageResponse<OrderDTOs.OrderResponse> searchOrders(String keyword, Pageable pageable) {
+        Page<OrderDTOs.OrderResponse> page = orderRepository
+                .searchOrders(keyword, pageable)
+                .map(orderMapper::toResponse);
+        return PageResponse.from(page);
+    }
+
+    @Override
     @Transactional
     public OrderDTOs.OrderResponse updateOrderStatus(Long orderId,
                                                      OrderDTOs.UpdateOrderStatusRequest request, Long userId) {
